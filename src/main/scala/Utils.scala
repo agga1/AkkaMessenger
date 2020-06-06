@@ -1,7 +1,8 @@
 import akka.util.ByteString
 
+
 object Utils {
-  val commandSymbol = "~"
+  val commandSymbol = "\\"
 
   case class Message(message: Any) {
     def messageText: String = message match {
@@ -29,7 +30,11 @@ object Utils {
     def text: String = {
       if (isCommand) {
         val splitText = messageText.split(" ")
-        splitText.tail.reduce((a, b) => a + " " + b)
+
+        if (splitText.length >= 2)
+          splitText.tail.reduce((a, b) => a + " " + b)
+        else
+          ""
       }
       else
         messageText
@@ -44,4 +49,12 @@ object Utils {
         ByteString("invalid message")
     }
   }
+
+  val helpText: String =
+    """<SERVER>: Commands:
+    Log in: \login [name]
+    Check online users: \online
+    Create a chat room: \create
+    Connect to the chat room: \connect [room name]
+    Log out: \quit"""
 }

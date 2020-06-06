@@ -6,7 +6,7 @@ import akka.io.{IO, Tcp}
 
 import scala.collection.mutable
 
-import Utils.Message
+import Utils.{Message, helpText}
 
 
 class ServerActor(actorSystem: ActorSystem) extends Actor {
@@ -31,7 +31,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       activeUsers += (sender.path.name -> new User(sender))
 
       sender ! Register(self)
-      sendMessage(sender.path.name, Message("<SERVER>: Please log in using ~login [name]!"))
+      sendMessage(sender.path.name, Message("<SERVER>: To check possible commands enter: \\help"))
 
     case Received(data) =>
       val message = Message(data)
@@ -39,25 +39,28 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
 
       if (message.isCommand) {
         message.command match {
+          case Some("help") => help(clientActorName)
           case Some("login") => login(clientActorName, message.text)
           case Some("online") => online(clientActorName)
           case Some("create") => createChatRoom(clientActorName, message.text)
           case Some("connect") => connect(clientActorName, message.text)
-          case Some("quit") => quit(clientActorName)
+          case Some("leave") => leave(clientActorName)
           case _ => sendMessage(clientActorName, Message("<SERVER>: Unknown command!"))
         }
-      } else {
-        if (!activeUsers.contains(clientActorName)) {
-          sendMessage(clientActorName, Message("<SERVER>: Please login using ~login [name]!"))
-        } else {
-          sendToAll(clientActorName, message)
-        }
-      }
+      } else
+        loggedSafe(clientActorName, {
+            sendToAll(clientActorName, activeUsers(clientActorName).chatRoom,
+              Message("<" + activeUsers(clientActorName).name + ">: " + message.text))
+        })
+
+    case PeerClosed => quit(sender.path.name)
   }
+
+  def help(clientActorName: String): Unit = sendMessage(clientActorName, Message(helpText))
 
   def login(clientActorName: String, desiredName: String): Unit = {
     if (activeUsers.values.exists(_.name == desiredName)) {
-      sendMessage(clientActorName, Message("There is already an user with this username!"))
+      sendMessage(clientActorName, Message("There is already a user with this username!"))
     } else if (activeUsers.keys.exists(_ == clientActorName) && activeUsers(clientActorName).name != null) {
       sendMessage(clientActorName, Message("You are already logged in!"))
     } else {
@@ -66,34 +69,71 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     }
   }
 
-  def online(clientActorName: String): Unit =
-    sendMessage(clientActorName, Message("<SERVER>: Currently active users: " + activeUsersNumber))
+  def online(clientActorName: String): Unit = loggedSafe(clientActorName, {
+      sendMessage(clientActorName, Message("<SERVER>: Currently active users: " + activeUsersAsString))
+    })
 
-  def createChatRoom(clientActorName: String, roomName: String): Unit = {
-    if (activeUsers(clientActorName).name == null)
-      sendMessage(clientActorName, Message("<SERVER>: Log in before creating a room!"))
-    else if (chatRooms.contains(roomName))
-      sendMessage(clientActorName, Message("<SERVER>: Room <" + roomName + "> already exists!"))
-    else {
-      val newRoom = new ChatRoom(clientActorName)
-      chatRooms += (roomName -> newRoom)
+  def createChatRoom(clientActorName: String, roomName: String): Unit = loggedSafe(clientActorName, {
+      if (activeUsers(clientActorName).name == null)
+        sendMessage(clientActorName, Message("<SERVER>: Log in before creating a room!"))
+      else if (chatRooms.contains(roomName))
+        sendMessage(clientActorName, Message("<SERVER>: Room <" + roomName + "> already exists!"))
+      else {
+        val newRoom = new ChatRoom(clientActorName)
+        chatRooms += (roomName -> newRoom)
 
-      sendMessage(clientActorName, Message("<SERVER>: Successfully created room <" + roomName + ">!"))
-    }
-  }
+        sendMessage(clientActorName, Message("<SERVER>: Successfully created room <" + roomName + ">!"))
+      }
+    })
 
+  def connect(clientActorName: String, chatRoom: String): Unit = loggedSafe(clientActorName, {
+      if (chatRooms.contains(chatRoom)) {
+        if (activeUsers(clientActorName).chatRoom != null)
+          leave(clientActorName)
 
-  def connect(clientActorName: String, chatRoom: String): Unit = {
+        chatRooms(chatRoom).addUser(clientActorName)
+        activeUsers(clientActorName).changeRoom(chatRoom)
+        sendMessage(clientActorName, Message("<SERVER>: You entered the room <" + chatRoom + ">!"))
+      }
+      else
+        sendMessage(clientActorName, Message("<SERVER>: There is no room with that name!"))
+    })
 
-  }
+  def leave(clientActorName: String): Unit = loggedSafe(clientActorName, {
+      val room: String = activeUsers(clientActorName).chatRoom
+
+      if (room != null) {
+        chatRooms(room).removeUser(clientActorName)
+
+        activeUsers(clientActorName).changeRoom(null)
+
+        sendToAll(clientActorName, room,
+          Message("<SERVER>: User <" + activeUsers(clientActorName).name + "> has left the chat room!"))
+        sendMessage(clientActorName, Message("<SERVER>: You have left the room <" + room + ">!"))
+      }
+      else
+        sendMessage(clientActorName, Message("<SERVER>: You are not in any room!"))
+    })
 
   def quit(clientActorName: String): Unit = {
     if (activeUsers.contains(clientActorName)) {
-      val quittingUser = activeUsers(clientActorName)
+      val quittingUser: User = activeUsers(clientActorName)
+      val lastRoom: String = quittingUser.chatRoom
+
+      if (lastRoom != null)
+        chatRooms(lastRoom).removeUser(clientActorName)
       activeUsers -= clientActorName
 
-      sendToAll("SERVER", Message("<" + quittingUser.name + "> has left the chatroom."))
+      sendToAll(clientActorName, lastRoom,
+        Message("<SERVER>: User <" + quittingUser.name + "> has left the chat room!"))
     }
+  }
+
+  def loggedSafe(clientActorName: String, blockOfCode: => Unit): Unit = {
+    if (activeUsers(clientActorName).name != null)
+      blockOfCode
+    else
+      sendMessage(clientActorName, Message("<SERVER>: Please log in by: \\login [name]!"))
   }
 
   def sendMessage(clientActorName: String, message: Message): Unit = {
@@ -101,14 +141,18 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     actorRef ! Write(message.toSend)
   }
 
-  def sendToAll(messageSender: String, message: Message): Unit =
-    activeUsers.foreach(item => sendMessage(item._1, Message("<" + messageSender + ">: " + message.text)))
+  def sendToAll(messageSender: String, room: String, message: Message): Unit = {
+    if (room == null && activeUsers.contains(messageSender))
+      sendMessage(messageSender, Message("<SERVER>: You are not in any conversation!"))
+    else if (room != null)
+      chatRooms(room).users.foreach(user => sendMessage(user, message))
+  }
 
   def getActorRef(actorName: String): ActorRef = activeUsers(actorName).actorRef
 
   def getName(actorName: String): String = activeUsers(actorName).name
 
-  def activeUsersNumber: String = {
+  def activeUsersAsString: String = {
     if (!activeUsers.exists(item => item._2.name != null)) "nobody (0 users total)."
     else activeUsers.values.map(_.name).reduce(_ + ", " + _) +
       " (" + activeUsers.size + " users total)."

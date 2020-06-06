@@ -1,9 +1,9 @@
 class ChatRoom(val admin: String) {
-  val users = scala.collection.mutable.HashSet.empty[String]
+  private val _users = scala.collection.mutable.HashSet.empty[String]
 
-  def addUser(name: String): Unit = users.add(name)
+  def addUser(name: String): Unit = _users.add(name)
 
-  def removeUser(name: String): Unit = users.remove(name)
+  def removeUser(name: String): Unit = _users.remove(name)
 
-  def getAllUsers: Array[String] = users.toArray
+  def users: Array[String] = _users.toArray
 }

@@ -58,8 +58,8 @@ class ClientActor(address: InetSocketAddress, actorSystem: ActorSystem) extends 
 }
 
 /**
- * Called when client start running. It makes actor system, creates actor responsible for communication by network
- * and handles commands and messages written by user.
+ * Called when client starts running. It creates actor system and the actor responsible for communication by network.
+ * Then start handling commands and messages written by user.
  */
 object Client extends App {
   // properties of the network

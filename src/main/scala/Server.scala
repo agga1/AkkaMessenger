@@ -62,7 +62,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
           case Some("create") => createChatRoom(clientActorName, message.text)
           case Some("join") => join(clientActorName, message.text)
           case Some("leave") => leave(clientActorName)
-          case Some("room") => checkRoom(clientActorName)
+          case Some("where") => checkWhere(clientActorName)
           case Some("pair") => pair(clientActorName, message.text)
           case _ => sendMessage(clientActorName, Message("<SERVER>: Unknown command!"))
         }
@@ -119,13 +119,18 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       sendMessage(clientActorName, Message("<SERVER>: Currently active users: " + activeUsersAsString))
     })
 
-  // TODO check pairs also
-  def checkRoom(clientActorName: String): Unit = loggedSafe(clientActorName, {
-    val room: String = activeUsers(clientActorName).chatRoom
-    if(room != null){
-      sendMessage(clientActorName, Message("<SERVER>: You are currently in the room <" + room + ">!"))
+  def checkWhere(clientActorName: String): Unit = loggedSafe(clientActorName, {
+    if(!activeUsers(clientActorName).occupied()){
+      sendMessage(clientActorName, Message("<SERVER>: You are not in any conversation!"))
     }else{
-      sendMessage(clientActorName, Message("<SERVER>: You aren't currently in any room"))
+      val room: String = activeUsers(clientActorName).chatRoom
+      val pair: String = activeUsers(clientActorName).pair
+      if(room != null){
+        sendMessage(clientActorName, Message("<SERVER>: You are currently in the room <" + room + ">!"))
+      }else{
+        sendMessage(clientActorName, Message("<SERVER>: You are currently in the private conversation" +
+          " with <"+ activeUsers(pair).name +">."))
+      }
     }
   })
 
@@ -197,30 +202,34 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     })
 
   def pair(clientActorName: String, friend: String): Unit = loggedSafe(clientActorName, {
-    val otherActor = actorsByName(friend) // todo handle nonexistent user
-    println(otherActor)
-    // check if other user is available
-    if(activeUsers(otherActor).occupied()){
-      sendMessage(clientActorName, Message("<SERVER>: User that you're trying to PM is currently occupied." +
-        "\n We will send him notification about your request."))
-      sendMessage(otherActor, Message("<SERVER>: user <"+ activeUsers(clientActorName).name+">"+
-        " wants to PM you.\n Leave your current conversation to be available."))
-    }
-    else{
-      // automatically leave current room
-      if(activeUsers(clientActorName).occupied()){
-        leave(clientActorName)
+    if(actorsByName.contains(friend)) {
+      val otherActor = actorsByName(friend)
+      println(otherActor)
+      // check if other user is available
+      if (activeUsers(otherActor).occupied()) {
+        sendMessage(clientActorName, Message("<SERVER>: User that you're trying to PM is currently occupied." +
+          "\n We will send him notification about your request."))
+        sendMessage(otherActor, Message("<SERVER>: user <" + activeUsers(clientActorName).name + ">" +
+          " wants to PM you.\n Leave your current conversation to be available."))
       }
-      // connect users
-      activeUsers(clientActorName).pairWith(otherActor)
-      activeUsers(otherActor).pairWith(clientActorName)
-      sendMessage(clientActorName, Message("<SERVER>: Successfully paired with <"+ friend +"> !"))
-      sendMessage(otherActor, Message("<SERVER>: You are paired with <"+ activeUsers(clientActorName).name +"> !"))
+      else {
+        // automatically leave current conversation
+        if (activeUsers(clientActorName).occupied()) {
+          leave(clientActorName)
+        }
+        // connect users
+        activeUsers(clientActorName).pairWith(otherActor)
+        activeUsers(otherActor).pairWith(clientActorName)
+        sendMessage(clientActorName, Message("<SERVER>: Successfully paired with <" + friend + "> !"))
+        sendMessage(otherActor, Message("<SERVER>: You are paired with <" + activeUsers(clientActorName).name + "> !"))
+      }
+    }else{
+      sendMessage(clientActorName, Message("<SERVER>: No user with name <" + friend + ">!"))
     }
   })
 
   /**
-   * Handles user disconnection. Also leaves room if necessary.
+   * Handles user disconnection. Also leaves any conversations if necessary.
    *
    * @param clientActorName name of the user's actor.
    */

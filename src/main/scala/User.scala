@@ -13,6 +13,8 @@ class User(val actorRef: ActorRef) {
   // current room in which the user is
   private var _chatRoom: String = _
 
+  private var _pair: String = _
+
   /**
    * Changing current room of the user. In case the parameter is equal to `null`, then it means that user is not in any
    * room.
@@ -22,8 +24,13 @@ class User(val actorRef: ActorRef) {
   def changeRoom(newRoom: String): Unit =
     _chatRoom = newRoom
 
+  def pairWith(friend: String): Unit = {
+    _pair = friend
+  }
+
   /**
-   * Getter of current room.
+   * Getters
    */
   def chatRoom: String = _chatRoom
+  def pair: String = _pair
 }

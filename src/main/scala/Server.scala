@@ -20,7 +20,8 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
 
   // all users which have connected with the server; key is the name of the user's actor
   val activeUsers = mutable.HashMap.empty[String, User]
-
+  // map of custom username to the user's Actor
+  val actorsByName =  mutable.HashMap.empty[String, String]
   // all created chat rooms; key is a name of the room given by its creator
   val chatRooms = mutable.HashMap.empty[String, ChatRoom]
 
@@ -44,7 +45,6 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     // registering new client and sending initial message to the new user
     case Connected(_, _) =>
       activeUsers += (sender.path.name -> new User(sender))
-
       sender ! Register(self)
       sendMessage(sender.path.name, Message("<SERVER>: To check possible commands enter: \\help"))
 
@@ -62,6 +62,8 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
           case Some("create") => createChatRoom(clientActorName, message.text)
           case Some("connect") => connect(clientActorName, message.text)
           case Some("leave") => leave(clientActorName)
+          case Some("room") => checkRoom(clientActorName)
+          case Some("pair") => pair(clientActorName, message.text)
           case _ => sendMessage(clientActorName, Message("<SERVER>: Unknown command!"))
         }
       }
@@ -97,6 +99,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       sendMessage(clientActorName, Message("You are already logged in!"))
     else {
       activeUsers(clientActorName).name = desiredName
+      actorsByName += (desiredName -> clientActorName)
       sendMessage(clientActorName, Message("<SERVER>: Successfully logged as " + desiredName))
     }
   }
@@ -110,6 +113,15 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       sendMessage(clientActorName, Message("<SERVER>: Currently active users: " + activeUsersAsString))
     })
 
+  def checkRoom(clientActorName: String): Unit = loggedSafe(clientActorName, {
+    val room: String = activeUsers(clientActorName).chatRoom
+    if(room != null){
+      sendMessage(clientActorName, Message("<SERVER>: You are currently in the room <" + room + ">!"))
+    }else{
+      sendMessage(clientActorName, Message("<SERVER>: You aren't currently in any room"))
+    }
+  })
+
   /**
    * Handles "create" command. Creates new chat room.
    *
@@ -117,9 +129,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * @param roomName name of the room.
    */
   def createChatRoom(clientActorName: String, roomName: String): Unit = loggedSafe(clientActorName, {
-      if (activeUsers(clientActorName).name == null)
-        sendMessage(clientActorName, Message("<SERVER>: Log in before creating a room!"))
-      else if (chatRooms.contains(roomName))
+      if (chatRooms.contains(roomName))
         sendMessage(clientActorName, Message("<SERVER>: Room <" + roomName + "> already exists!"))
       else {
         val newRoom = new ChatRoom(clientActorName)
@@ -169,6 +179,15 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
         sendMessage(clientActorName, Message("<SERVER>: You are not in any room!"))
     })
 
+  def pair(clientActorName: String, friend: String): Unit = loggedSafe(clientActorName, {
+    // TODO
+//    val room: String = activeUsers(clientActorName).chatRoom
+//    if(room != null){
+//        leave(clientActorName)
+//    }
+//    activeUsers(clientActorName).pairWith(friend)
+  })
+
   /**
    * Handles user disconnection. Also leaves room if necessary.
    *
@@ -181,12 +200,15 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
 
       if (lastRoom != null)
         chatRooms(lastRoom).removeUser(clientActorName)
+      actorsByName -= quittingUser.name
       activeUsers -= clientActorName
 
       sendToAll(clientActorName, lastRoom,
         Message("<SERVER>: User <" + quittingUser.name + "> has left the chat room!"))
     }
   }
+
+
 
   /**
    * When user is not logged in they can use just three commands: "help", "login" and "quit". This function wraps
@@ -232,8 +254,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * Gets String containing names of all logged users and number of them.
    */
   def activeUsersAsString: String = {
-    val loggedUsersNames = activeUsers.values.map(_.name).filter(name => name != null)
-
+    val loggedUsersNames = actorsByName.keys
     if (loggedUsersNames.isEmpty)
       "nobody (0 users total)."
     else

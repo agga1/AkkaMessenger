@@ -60,7 +60,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
           case Some("login") => login(clientActorName, message.text)
           case Some("online") => online(clientActorName)
           case Some("create") => createChatRoom(clientActorName, message.text)
-          case Some("connect") => connect(clientActorName, message.text)
+          case Some("join") => join(clientActorName, message.text)
           case Some("leave") => leave(clientActorName)
           case Some("room") => checkRoom(clientActorName)
           case Some("pair") => pair(clientActorName, message.text)
@@ -68,15 +68,21 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
         }
       }
       // transferring messages between users
-      else
-        loggedSafe(clientActorName, {
-            sendToAll(clientActorName, activeUsers(clientActorName).chatRoom,
-              Message("<" + activeUsers(clientActorName).name + ">: " + message.text))
-        })
+      else passMessage(clientActorName, message)
 
     // handling user disconnection
     case PeerClosed => quit(sender.path.name)
   }
+
+  def passMessage(clientActorName: String, message: Message): Unit = loggedSafe(clientActorName, {
+    val msg = Message("<" + activeUsers(clientActorName).name + ">: " + message.text)
+    if(activeUsers(clientActorName).chatRoom != null){
+      sendToAll(clientActorName, activeUsers(clientActorName).chatRoom, msg)
+    }
+    else if(activeUsers(clientActorName).pair != null){
+      sendMessage(activeUsers(clientActorName).pair, msg)
+    }
+  })
 
   /**
    * Handles "help" command. Sends message with all possible commands to the user.
@@ -113,6 +119,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       sendMessage(clientActorName, Message("<SERVER>: Currently active users: " + activeUsersAsString))
     })
 
+  // TODO check pairs also
   def checkRoom(clientActorName: String): Unit = loggedSafe(clientActorName, {
     val room: String = activeUsers(clientActorName).chatRoom
     if(room != null){
@@ -145,9 +152,9 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * @param clientActorName name of the user's actor.
    * @param chatRoom name of the user's desired room.
    */
-  def connect(clientActorName: String, chatRoom: String): Unit = loggedSafe(clientActorName, {
+  def join(clientActorName: String, chatRoom: String): Unit = loggedSafe(clientActorName, {
       if (chatRooms.contains(chatRoom)) {
-        if (activeUsers(clientActorName).chatRoom != null)
+        if (activeUsers(clientActorName).occupied())
           leave(clientActorName)
 
         chatRooms(chatRoom).addUser(clientActorName)
@@ -164,28 +171,52 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * @param clientActorName name of the user's actor.
    */
   def leave(clientActorName: String): Unit = loggedSafe(clientActorName, {
-      val room: String = activeUsers(clientActorName).chatRoom
-
-      if (room != null) {
-        chatRooms(room).removeUser(clientActorName)
-
-        activeUsers(clientActorName).changeRoom(null)
-
-        sendToAll(clientActorName, room,
-          Message("<SERVER>: User <" + activeUsers(clientActorName).name + "> has left the chat room!"))
-        sendMessage(clientActorName, Message("<SERVER>: You have left the room <" + room + ">!"))
+      if(!activeUsers(clientActorName).occupied()){
+        sendMessage(clientActorName, Message("<SERVER>: You are not in any conversation!"))
       }
-      else
-        sendMessage(clientActorName, Message("<SERVER>: You are not in any room!"))
+      else{
+        val room: String = activeUsers(clientActorName).chatRoom
+        val pair: String = activeUsers(clientActorName).pair
+
+        if (room != null) {
+          chatRooms(room).removeUser(clientActorName)
+          activeUsers(clientActorName).changeRoom(null)
+
+          sendToAll(clientActorName, room,
+            Message("<SERVER>: User <" + activeUsers(clientActorName).name + "> has left the chat room!"))
+          sendMessage(clientActorName, Message("<SERVER>: You have left the room <" + room + ">!"))
+        }
+        else if(pair != null){
+          activeUsers(clientActorName).unpair()
+          sendMessage(clientActorName, Message("<SERVER>: You have left the chat with " +
+            "<" + activeUsers(pair).name + ">"))
+          activeUsers(pair).unpair()
+          sendMessage(pair, Message("<SERVER>: user <" + activeUsers(clientActorName).name + "> has disconnected."))
+        }
+      }
     })
 
   def pair(clientActorName: String, friend: String): Unit = loggedSafe(clientActorName, {
-    // TODO
-//    val room: String = activeUsers(clientActorName).chatRoom
-//    if(room != null){
-//        leave(clientActorName)
-//    }
-//    activeUsers(clientActorName).pairWith(friend)
+    val otherActor = actorsByName(friend) // todo handle nonexistent user
+    println(otherActor)
+    // check if other user is available
+    if(activeUsers(otherActor).occupied()){
+      sendMessage(clientActorName, Message("<SERVER>: User that you're trying to PM is currently occupied." +
+        "\n We will send him notification about your request."))
+      sendMessage(otherActor, Message("<SERVER>: user <"+ activeUsers(clientActorName).name+">"+
+        " wants to PM you.\n Leave your current conversation to be available."))
+    }
+    else{
+      // automatically leave current room
+      if(activeUsers(clientActorName).occupied()){
+        leave(clientActorName)
+      }
+      // connect users
+      activeUsers(clientActorName).pairWith(otherActor)
+      activeUsers(otherActor).pairWith(clientActorName)
+      sendMessage(clientActorName, Message("<SERVER>: Successfully paired with <"+ friend +"> !"))
+      sendMessage(otherActor, Message("<SERVER>: You are paired with <"+ activeUsers(clientActorName).name +"> !"))
+    }
   })
 
   /**
@@ -195,16 +226,11 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    */
   def quit(clientActorName: String): Unit = {
     if (activeUsers.contains(clientActorName)) {
-      val quittingUser: User = activeUsers(clientActorName)
-      val lastRoom: String = quittingUser.chatRoom
+      if(activeUsers(clientActorName).occupied())
+        leave(clientActorName)
 
-      if (lastRoom != null)
-        chatRooms(lastRoom).removeUser(clientActorName)
-      actorsByName -= quittingUser.name
+      actorsByName -= activeUsers(clientActorName).name
       activeUsers -= clientActorName
-
-      sendToAll(clientActorName, lastRoom,
-        Message("<SERVER>: User <" + quittingUser.name + "> has left the chat room!"))
     }
   }
 

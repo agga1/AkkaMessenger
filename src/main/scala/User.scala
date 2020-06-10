@@ -13,6 +13,7 @@ class User(val actorRef: ActorRef) {
   // current room in which the user is
   private var _chatRoom: String = _
 
+  // current actorsName of the paired friend
   private var _pair: String = _
 
   /**
@@ -27,7 +28,11 @@ class User(val actorRef: ActorRef) {
   def pairWith(friend: String): Unit = {
     _pair = friend
   }
+  def unpair(): Unit = { _pair = null }
 
+  def occupied(): Boolean = {
+    _pair != null || _chatRoom != null
+  }
   /**
    * Getters
    */

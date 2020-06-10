@@ -84,9 +84,9 @@ object Utils {
     Log in: \login [name]
     Check online users: \online
     Create a chat room: \create [room name]
-    Connect to the chat room: \connect [room name]
+    Join the chat room: \join [room name]
     Check current chat room: \room
     Start private chat with other user: \pair [name]
-    Leave current chat room: \leave
+    Leave current chat: \leave
     Log out: \quit"""
 }

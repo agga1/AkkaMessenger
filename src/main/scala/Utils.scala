@@ -83,6 +83,7 @@ object Utils {
     Display help text: \help
     Log in: \login [name]
     Check online users: \online
+    Check available rooms: \rooms
     Create a chat room: \create [room name]
     Join the chat room: \join [room name]
     Start private chat with other user: \pair [name]

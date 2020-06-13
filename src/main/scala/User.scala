@@ -17,19 +17,26 @@ class User(val actorRef: ActorRef) {
   private var _pair: String = _
 
   /**
-   * Changing current room of the user. In case the parameter is equal to `null`, then it means that user is not in any
-   * room.
+   * Changing current room of the user.
+   * If user is not in any room, the parameter is equal to `null`.
    *
    * @param newRoom user is changing room to this new one.
    */
   def changeRoom(newRoom: String): Unit =
     _chatRoom = newRoom
 
+  /**
+   * Pair with other user.
+   * @param friend other user's Actor name
+   */
   def pairWith(friend: String): Unit = {
     _pair = friend
   }
   def unpair(): Unit = { _pair = null }
 
+  /**
+   * Checks whether user is currently in any conversation
+   */
   def occupied(): Boolean = {
     _pair != null || _chatRoom != null
   }

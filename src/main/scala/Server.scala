@@ -9,7 +9,7 @@ import scala.collection.mutable
 import Utils.{Message, helpText}
 
 /**
- * Actor which is communicating with clients.
+ * Actor communicating with clients.
  *
  * @param actorSystem current actor system.
  */
@@ -112,7 +112,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
   }
 
   /**
-   * Handles "online" command. Writes message containing names of all users which are connected and logged in.
+   * Handles "online" command. Lists names of all connected and logged in users.
    *
    * @param clientActorName name of the user's actor.
    */
@@ -121,7 +121,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     })
 
   /**
-   * Handles "rooms" command. Writes message containing names of all rooms which have been created and number of them.
+   * Handles "rooms" command. Lists names and number of all created rooms.
    *
    * @param clientActorName name of the user's actor.
    */
@@ -129,6 +129,11 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     sendMessage(clientActorName, Message("<SERVER>: Currently available rooms: " + availableRoomsAsString))
   })
 
+  /**
+   * Checks in which conversation the user currently is (room/private and name)
+   *
+   * @param clientActorName name of the user's actor.
+   */
   def checkWhere(clientActorName: String): Unit = loggedSafe(clientActorName, {
     if(!activeUsers(clientActorName).occupied()){
       sendMessage(clientActorName, Message("<SERVER>: You are not in any conversation!"))
@@ -162,7 +167,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     })
 
   /**
-   * Handles "connect" command. Changes user's room.
+   * Handles "join" command. Changes user's room.
    *
    * @param clientActorName name of the user's actor.
    * @param chatRoom name of the user's desired room.
@@ -181,7 +186,8 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     })
 
   /**
-   * Handles "leave" command. User is leaving current room. Theirs `chatRoom` property is set to `null`.
+   * Handles "leave" command. User is leaving current room/private conversation and is
+   * free to be connected to another conversation.
    *
    * @param clientActorName name of the user's actor.
    */
@@ -215,6 +221,12 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       }
   })
 
+  /**
+   * Pairs user with requested friend, if friend is not occupied.
+   *
+   * @param clientActorName name of the user's actor.
+   * @param friend friends's username
+   */
   def pair(clientActorName: String, friend: String): Unit = loggedSafe(clientActorName, {
     if(actorsByName.contains(friend)) {
       val otherActor = actorsByName(friend)

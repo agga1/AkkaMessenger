@@ -174,7 +174,7 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     })
 
   /**
-   * Handles "join" command. Changes user's room.
+   * Handles "join" command. Changes user's room, if possible.
    *
    * @param clientActorName name of the user's actor.
    * @param roomSpacePassword name of the user's desired room.
@@ -202,6 +202,13 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
       }
     })
 
+  /**
+   *  Checks given password with room's password and logs user to the secure chat room.
+   *
+   * @param clientActorName client's actor (string) id
+   * @param chatRoom secure chatroom to join to
+   * @param password password given by the client
+   */
   def joinSecure(clientActorName: String, chatRoom: SecureChatRoom, password: String): Unit = loggedSafe(clientActorName, {
     if(chatRoom.password != password){
       sendMessage(clientActorName, Message("<SERVER>: Incorrect password! Access denied."))
@@ -211,6 +218,12 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
     }
   })
 
+  /**
+   * Adds user to the open Chatroom (or secure chatroom with already passed authentication)
+   *
+   * @param clientActorName client's actor (string) id
+   * @param chatRoom chatroom to join to
+   */
   def joinOpen(clientActorName: String, chatRoom: ChatRoom): Unit = loggedSafe(clientActorName, {
       chatRoom.addUser(clientActorName)
       activeUsers(clientActorName).changeRoom(chatRoom.name)

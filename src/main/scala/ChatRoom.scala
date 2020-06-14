@@ -3,7 +3,7 @@
  *
  * @param admin user which has created the room (as name of the actor).
  */
-class ChatRoom(val admin: String) {
+class ChatRoom(val admin: String, val name: String) {
   // contains all users (names of their actors)
   private val _users = scala.collection.mutable.HashSet.empty[String]
 
@@ -25,4 +25,7 @@ class ChatRoom(val admin: String) {
    * Returns `Array` containing all users in the room (as array of names of their actors).
    */
   def users: Array[String] = _users.toArray
+}
+
+class SecureChatRoom(override val admin: String, override val name: String, val password: String) extends ChatRoom(admin, name){
 }

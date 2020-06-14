@@ -153,16 +153,23 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * Handles "create" command. Creates new chat room.
    *
    * @param clientActorName name of the user's actor.
-   * @param roomName name of the room.
+   * @param roomSpacePassword name of the room (and eventually password).
    */
-  def createChatRoom(clientActorName: String, roomName: String): Unit = loggedSafe(clientActorName, {
+  def createChatRoom(clientActorName: String, roomSpacePassword: String): Unit = loggedSafe(clientActorName, {
+      val words = roomSpacePassword.split(" ")
+      val roomName = words(0)
+      val password = if (words.size > 1) words(1) else ""
+
       if (chatRooms.contains(roomName))
         sendMessage(clientActorName, Message("<SERVER>: Room <" + roomName + "> already exists!"))
       else {
-        val newRoom = new ChatRoom(clientActorName)
+        val newRoom = if(password=="")
+          new ChatRoom(clientActorName, roomName)
+        else
+          new SecureChatRoom(clientActorName, roomName, password)
         chatRooms += (roomName -> newRoom)
-
-        sendMessage(clientActorName, Message("<SERVER>: Successfully created room <" + roomName + ">!"))
+        val secured = if(password=="") "" else " password-secured"
+        sendMessage(clientActorName, Message("<SERVER>: Successfully created"+ secured + " room <" + roomName + ">!"))
       }
     })
 
@@ -170,20 +177,45 @@ class ServerActor(actorSystem: ActorSystem) extends Actor {
    * Handles "join" command. Changes user's room.
    *
    * @param clientActorName name of the user's actor.
-   * @param chatRoom name of the user's desired room.
+   * @param roomSpacePassword name of the user's desired room.
    */
-  def join(clientActorName: String, chatRoom: String): Unit = loggedSafe(clientActorName, {
-      if (chatRooms.contains(chatRoom)) {
+  def join(clientActorName: String, roomSpacePassword: String): Unit = loggedSafe(clientActorName, {
+      val words = roomSpacePassword.split(" ")
+      val chatRoomName = words(0)
+      val password = if(words.size > 1) words(1) else ""
+
+      if(!chatRooms.contains(chatRoomName)){
+        sendMessage(clientActorName, Message("<SERVER>: There is no room with that name!"))
+      }
+      else{
+        // room exists - leave current conversation and try to join
         if (activeUsers(clientActorName).occupied())
           leave(clientActorName)
 
-        chatRooms(chatRoom).addUser(clientActorName)
-        activeUsers(clientActorName).changeRoom(chatRoom)
-        sendMessage(clientActorName, Message("<SERVER>: You entered the room <" + chatRoom + ">!"))
+        val chatRoom = chatRooms(chatRoomName)
+        chatRoom match {
+          case sec: SecureChatRoom =>
+            joinSecure(clientActorName, sec, password)
+          case open: ChatRoom =>
+            joinOpen(clientActorName, open)
+        }
       }
-      else
-        sendMessage(clientActorName, Message("<SERVER>: There is no room with that name!"))
     })
+
+  def joinSecure(clientActorName: String, chatRoom: SecureChatRoom, password: String): Unit = loggedSafe(clientActorName, {
+    if(chatRoom.password != password){
+      sendMessage(clientActorName, Message("<SERVER>: Incorrect password! Access denied."))
+    }
+    else{
+      joinOpen(clientActorName, chatRoom)
+    }
+  })
+
+  def joinOpen(clientActorName: String, chatRoom: ChatRoom): Unit = loggedSafe(clientActorName, {
+      chatRoom.addUser(clientActorName)
+      activeUsers(clientActorName).changeRoom(chatRoom.name)
+      sendMessage(clientActorName, Message("<SERVER>: You entered the room <" + chatRoom.name + ">!"))
+  })
 
   /**
    * Handles "leave" command. User is leaving current room/private conversation and is

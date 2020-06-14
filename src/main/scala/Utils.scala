@@ -84,10 +84,11 @@ object Utils {
     Log in: \login [name]
     Check online users: \online
     Check available rooms: \rooms
-    Create a chat room: \create [room name]
+    Create chat room: \create [room name]
+      Create password-secured chat room: \create [room name] [password]
     Join the chat room: \join [room name]
     Start private chat with other user: \pair [name]
-    Check current chat: \where
     Leave current chat: \leave
+    Check current chat: \where
     Log out: \quit"""
 }
